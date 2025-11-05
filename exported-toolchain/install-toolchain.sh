@@ -13,13 +13,12 @@ echo "This will NOT affect system gcc or applications."
 echo ""
 
 # Check if archive exists
-if [ ! -f "rhel7-toolchain-*.tar.gz" ]; then
+ARCHIVE=$(ls rhel7-toolchain-*.tar.gz 2>/dev/null | head -1)
+if [ -z "$ARCHIVE" ]; then
     echo "❌ Error: No toolchain archive found (rhel7-toolchain-*.tar.gz)"
     echo "Make sure you're running this script in the same directory as the archive."
     exit 1
 fi
-
-ARCHIVE=$(ls rhel7-toolchain-*.tar.gz | head -1)
 echo "📦 Found archive: $ARCHIVE"
 
 # Install toolchain
@@ -35,13 +34,14 @@ if [ ! -f "patchelf-$PATCHELF_VERSION-x86_64.tar.gz" ]; then
     echo "Make sure you're running this script in the same directory as the patchelf archive."
     exit 1
 fi
+CURRENT_DIR=$(pwd)
 cd /tmp
-cp "../patchelf-$PATCHELF_VERSION-x86_64.tar.gz" .
+cp "$CURRENT_DIR/patchelf-$PATCHELF_VERSION-x86_64.tar.gz" .
 tar -xzf patchelf-$PATCHELF_VERSION-x86_64.tar.gz
-sudo cp patchelf-$PATCHELF_VERSION-x86_64/bin/patchelf /usr/local/bin/
+sudo cp bin/patchelf /usr/local/bin/
 sudo chmod +x /usr/local/bin/patchelf
-rm -rf patchelf-*
-cd - > /dev/null
+rm -rf bin share patchelf-$PATCHELF_VERSION-x86_64.tar.gz
+cd "$CURRENT_DIR"
 
 # Create VS Code environment variables script
 echo "🌍 Setting up VS Code server environment variables..."

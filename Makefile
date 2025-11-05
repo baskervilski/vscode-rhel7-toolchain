@@ -33,6 +33,8 @@ help:
 	@echo "  check           - Check if toolchain exists in mounted output"
 	@echo "  verify          - Verify toolchain build completeness and functionality"
 	@echo "  test-env        - Build and run VS Code Remote SSH test environment"
+	@echo "  attach-test     - Attach to running test container with bash shell"
+	@echo "  stop-test       - Stop the running test container"
 	@echo "  install-sysroot - Install sysroot toolchain in running test container"
 	@echo "  uninstall-sysroot - Remove sysroot toolchain from test container"
 	@echo "  clean           - Remove the container image"
@@ -266,7 +268,7 @@ install-sysroot:
 	@echo "✅ Sysroot toolchain installed successfully!"
 	@echo "🔌 VS Code Remote SSH should now work with the container"
 	@echo "📊 Test the installation:"
-	@echo "   podman exec $(TEST_CONTAINER_NAME) $(SYSROOT_INSTALL_PATH)/bin/$(TOOLCHAIN_PREFIX)-gcc --version"
+	@echo "   podman exec $(TEST_CONTAINER_NAME) $(SYSROOT_INSTALL_PATH)/x86_64-linux-gnu/bin/x86_64-linux-gnu-gcc --version"
 
 # Remove sysroot toolchain from test container
 .PHONY: uninstall-sysroot
@@ -290,3 +292,32 @@ uninstall-sysroot:
 	@echo "❌ VS Code Remote SSH will now fail again (back to glibc 2.17)"
 	@echo "📊 Verify removal:"
 	@echo "   podman exec $(TEST_CONTAINER_NAME) ls -la $(SYSROOT_INSTALL_PATH)  # Should not exist"
+
+# Attach to running test container
+.PHONY: attach-test
+attach-test:
+	@echo "🔗 Attaching to running test container..."
+	@if ! podman ps --format "{{.Names}}" | grep -q "$(TEST_CONTAINER_NAME)"; then \
+		echo "❌ Test container not running. Start it first with: make test-env"; \
+		exit 1; \
+	fi
+	@echo "📋 Container info:"; \
+	podman ps --filter "name=$(TEST_CONTAINER_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+	@echo ""
+	@echo "🚀 Attaching to container as $(TEST_USER)..."
+	@echo "💡 Tip: Type 'exit' to detach from container"
+	@echo ""
+	podman exec -it $(TEST_CONTAINER_NAME) bash -l
+
+# Stop running test container
+.PHONY: stop-test
+stop-test:
+	@echo "🛑 Stopping test container..."
+	@if ! podman ps --format "{{.Names}}" | grep -q "$(TEST_CONTAINER_NAME)"; then \
+		echo "ℹ️  Test container is not running"; \
+		exit 0; \
+	fi
+	@echo "📋 Stopping container: $(TEST_CONTAINER_NAME)"
+	podman stop $(TEST_CONTAINER_NAME)
+	@echo "✅ Test container stopped successfully!"
+	@echo "💡 Restart with: make test-env"
