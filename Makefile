@@ -262,8 +262,10 @@ install-sysroot:
 	fi
 	@echo "📋 Copying toolchain files to container..."
 	@podman cp $(EXPORT_DIR)/. $(TEST_CONTAINER_NAME):/home/$(TEST_USER)/
+	@echo "🔧 Fixing file permissions..."
+	@podman exec $(TEST_CONTAINER_NAME) chown -R $(TEST_USER):$(TEST_USER) /home/$(TEST_USER)/
 	@echo "🔧 Installing toolchain..."
-	@podman exec -it $(TEST_CONTAINER_NAME) bash -c "cd /home/$(TEST_USER) && chmod +x $(INSTALL_SCRIPT) && ./$(INSTALL_SCRIPT)"
+	@podman exec -it --user $(TEST_USER) $(TEST_CONTAINER_NAME) bash -c "cd /home/$(TEST_USER) && chmod +x $(INSTALL_SCRIPT) && ./$(INSTALL_SCRIPT)"
 	@echo ""
 	@echo "✅ Sysroot toolchain installed successfully!"
 	@echo "🔌 VS Code Remote SSH should now work with the container"
@@ -286,7 +288,7 @@ uninstall-sysroot:
 	@podman exec $(TEST_CONTAINER_NAME) bash -c "rm -f ~/vscode-server-env.sh"
 	@podman exec $(TEST_CONTAINER_NAME) bash -c "sed -i '/vscode-server-env.sh/d' ~/.bashrc"
 	@echo "🧹 Removing installation files..."
-	@podman exec $(TEST_CONTAINER_NAME) bash -c "cd /home/$(TEST_USER) && rm -f *.tar.gz $(INSTALL_SCRIPT) vscode-cpp-config.json"
+	@podman exec $(TEST_CONTAINER_NAME) bash -c "cd /home/$(TEST_USER) && rm -f *.tar.gz $(INSTALL_SCRIPT)"
 	@echo ""
 	@echo "✅ Sysroot toolchain uninstalled successfully!"
 	@echo "❌ VS Code Remote SSH will now fail again (back to glibc 2.17)"
@@ -307,7 +309,7 @@ attach-test:
 	@echo "🚀 Attaching to container as $(TEST_USER)..."
 	@echo "💡 Tip: Type 'exit' to detach from container"
 	@echo ""
-	podman exec -it $(TEST_CONTAINER_NAME) bash -l
+	podman exec -it --user $(TEST_USER) --workdir /home/$(TEST_USER) $(TEST_CONTAINER_NAME) bash -l
 
 # Stop running test container
 .PHONY: stop-test

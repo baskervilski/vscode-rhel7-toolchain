@@ -18,6 +18,14 @@ RUN useradd -m -s /bin/bash developer && \
     echo "developer:developer" | chpasswd && \
     echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+# Create proper temp directory for developer user and set environment
+RUN mkdir -p /home/developer/.tmp && \
+    chown developer:developer /home/developer/.tmp && \
+    chmod 700 /home/developer/.tmp && \
+    echo "export TMPDIR=/home/developer/.tmp" >> /home/developer/.bashrc && \
+    echo "export TMP=/home/developer/.tmp" >> /home/developer/.bashrc && \
+    echo "export TEMP=/home/developer/.tmp" >> /home/developer/.bashrc
+
 # Configure SSH
 RUN ssh-keygen -A && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
