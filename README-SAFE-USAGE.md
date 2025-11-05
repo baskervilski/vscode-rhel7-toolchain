@@ -1,36 +1,43 @@
-# Safe RHEL 7 Sysroot Usage Guide
+# Safe RHEL 7 Sysroot Usage Guide for Python Development
 
 ## ⚠️ SAFETY FIRST
 
-This toolchain creates an **isolated sysroot** that is completely separate from your RHEL 7 system. It will **NOT** interfere with:
+This sysroot toolchain creates an **isolated environment** that is completely separate from your RHEL 7 system. It will **NOT** interfere with:
 - System applications
-- Existing gcc/glibc
+- Existing system libraries (glibc 2.17)
 - Legacy software
 - Package manager (yum)
+- Python installations
 
-## What is a Sysroot?
+## What is a Sysroot for VS Code?
 
-A **sysroot** is a self-contained directory that contains:
-- Cross-compiler toolchain (`gcc`, `g++`, `ld`, etc.)
-- Target system headers and libraries (`glibc 2.28`)
-- Development tools isolated from the host system
+A **sysroot** for VS Code Remote SSH is a self-contained directory that contains:
+- Modern glibc 2.28 libraries (required by VS Code server)
+- patchelf tool for dynamic library patching
+- Environment variables for VS Code server integration
+- **Purpose**: Enable VS Code Remote SSH on legacy RHEL 7 servers
 
 ## Installation (100% Safe)
 
 1. **Transfer files to RHEL 7 server:**
 ```bash
-scp rhel7-toolchain-*.tar.gz install-toolchain.sh user@rhel7-server:
+scp exported-toolchain/* user@rhel7-server:
 ```
 
 2. **Install sysroot (does NOT modify system):**
 ```bash
 chmod +x install-toolchain.sh
-./install-toolchain.sh /opt/rhel7-sysroot
+./install-toolchain.sh
 ```
 
-This installs to `/opt/rhel7-sysroot` - completely isolated!
+This installs to `/opt/rhel7-sysroot` - completely isolated from your system!
 
-## VS Code Remote SSH Configuration
+**What gets installed:**
+- Modern glibc 2.28 libraries in `/opt/rhel7-sysroot/`
+- patchelf tool in `/usr/local/bin/patchelf`  
+- VS Code environment variables in `~/vscode-server-env.sh`
+
+## VS Code Remote SSH Setup
 
 3. **Restart your SSH session to load environment variables:**
 ```bash
@@ -40,69 +47,49 @@ source ~/.bashrc
 
 4. **Verify VS Code environment setup:**
 ```bash
-echo $VSCODE_SERVER_PATCHELF_PATH
-echo $VSCODE_SERVER_CUSTOM_GLIBC_LINKER  
-echo $VSCODE_SERVER_CUSTOM_GLIBC_PATH
-patchelf --version  # Should show v0.18.0+
+echo $VSCODE_SERVER_PATCHELF_PATH      # Should show /usr/local/bin/patchelf
+echo $VSCODE_SERVER_CUSTOM_GLIBC_PATH  # Should show sysroot lib paths
+patchelf --version                     # Should show v0.18.0+
 ```
 
-5. **Create VS Code project configuration:**
-```bash
-# In your project directory on RHEL 7 server
-mkdir -p .vscode
-cp vscode-cpp-config.json .vscode/c_cpp_properties.json
-```
+5. **Connect VS Code Remote SSH:**
+   - VS Code will now connect successfully to your RHEL 7 server
+   - Python development works perfectly
+   - No additional configuration needed for Python projects
 
-6. **Configure VS Code tasks (optional):**
-Create `.vscode/tasks.json`:
-```json
-{
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "build with sysroot",
-            "type": "shell",
-            "command": "/opt/rhel7-sysroot/bin/x86_64-unknown-linux-gnu-gcc",
-            "args": [
-                "${file}",
-                "-o",
-                "${fileDirname}/${fileBasenameNoExtension}"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        }
-    ]
-}
-```
-
-## Safe Development Workflow
+## Safe Python Development Workflow
 
 ### ✅ DO (Safe):
-- Use the sysroot compiler for development: `/opt/rhel7-sysroot/bin/x86_64-unknown-linux-gnu-gcc`
-- Configure VS Code to use the sysroot toolchain
-- Build your applications with the sysroot
-- Test binaries on the RHEL 7 system
+- Connect VS Code Remote SSH to your RHEL 7 server
+- Develop Python applications as usual
+- Use VS Code Python extension and debugging
+- Access system Python installations normally
+- Run Python scripts with system Python interpreter
 
-### ❌ DON'T (Dangerous):
-- Add sysroot to system PATH: `export PATH=/opt/rhel7-sysroot/bin:$PATH`
-- Replace system gcc with sysroot gcc
-- Use `sudo make install` or similar system-wide installations
+### ❌ DON'T (Unnecessary):
+- The sysroot is only for VS Code server compatibility
+- You don't need to configure Python paths or interpreters
+- System Python works normally and is unaffected
+- No special Python setup required
 
 ## Testing Your Setup
 
 ```bash
-# Test the isolated compiler (safe)
-/opt/rhel7-sysroot/bin/x86_64-unknown-linux-gnu-gcc --version
+# Verify sysroot installation
+ls -la /opt/rhel7-sysroot/
 
-# Verify system gcc is unchanged (should show old version)
-gcc --version
+# Check VS Code environment variables
+env | grep VSCODE_SERVER
 
-# Build a test program with sysroot
-echo 'int main(){return 0;}' > test.c
-/opt/rhel7-sysroot/bin/x86_64-unknown-linux-gnu-gcc test.c -o test_sysroot
-./test_sysroot && echo "Sysroot toolchain working!"
+# Test patchelf installation
+patchelf --version
+
+# Verify system is unchanged (should show glibc 2.17)
+ldd --version
+
+# Test Python (should work normally)
+python --version
+python3 --version
 ```
 
 ## VS Code Remote SSH Connection Process
@@ -114,16 +101,16 @@ When you connect to the RHEL 7 server:
 3. **Dynamic linking**: Server runs with modern glibc while system remains on glibc 2.17
 4. **Seamless development**: You get modern features without breaking the system
 
-## VS Code Remote SSH Benefits
+## VS Code Remote SSH Benefits for Python Development
 
 With this setup, VS Code will:
-- ✅ **Install and run successfully** on RHEL 7 (with custom glibc)
-- ✅ **Use modern IntelliSense** with glibc 2.28 headers  
-- ✅ **Provide accurate code completion** and error detection
-- ✅ **Support modern C/C++ standards** (C17, C++17)
-- ✅ **Work with the VS Code C/C++ extension** 
-- ✅ **Debug with modern gdb features**
-- ✅ **Show "unsupported connection" dialog** (this is normal and expected)
+- ✅ **Connect successfully** to RHEL 7 servers (bypasses glibc compatibility issues)
+- ✅ **Python development works perfectly** with all extensions
+- ✅ **Debugging and IntelliSense** work for Python projects
+- ✅ **Terminal integration** works normally  
+- ✅ **Extension marketplace** accessible for Python tools
+- ✅ **Git integration** and other features work seamlessly
+- ✅ **No special Python configuration** needed
 
 All while keeping your RHEL 7 system completely safe and unchanged!
 
@@ -144,5 +131,5 @@ A: No! System applications continue using system gcc and glibc 2.17
 **Q: Can I remove it safely?**
 A: Yes! Just `sudo rm -rf /opt/rhel7-sysroot`
 
-**Q: How do I use it in VS Code?**
-A: Configure `.vscode/c_cpp_properties.json` to point to the sysroot compiler
+**Q: How do I develop Python with this setup?**
+A: Just connect VS Code Remote SSH normally - Python development works automatically

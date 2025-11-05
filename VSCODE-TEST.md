@@ -1,12 +1,12 @@
 # VS Code Remote SSH Test Environment
 
-This container provides a complete RHEL 7 environment for testing VS Code Remote SSH with the custom sysroot toolchain.
+This container provides a complete RHEL 7 environment for testing VS Code Remote SSH with the custom sysroot toolchain designed for **Python development** on legacy servers.
 
 ## 🚀 Quick Start
 
 1. **Build the toolchain** (if not done already):
    ```bash
-   make build && make build-toolchain && make package
+   make build && make build-toolchain && make verify && make package
    ```
 
 2. **Start the test environment**:
@@ -14,42 +14,88 @@ This container provides a complete RHEL 7 environment for testing VS Code Remote
    make test-env
    ```
 
-3. **Connect VS Code Remote SSH**:
+3. **Install sysroot toolchain** (in another terminal):
+   ```bash
+   make install-sysroot
+   ```
+
+4. **Connect VS Code Remote SSH**:
    - Host: `localhost:2222`
    - User: `developer`
    - Password: `developer`
 
+## 📋 Available Make Commands
+
+### **Build Commands:**
+- `make build` - Build the crosstool-ng container image
+- `make build-toolchain` - Build the complete sysroot toolchain (30-60 minutes)
+- `make verify` - Verify toolchain build completeness and functionality
+- `make package` - Package toolchain for distribution with patchelf
+
+### **Test Environment Commands:**
+- `make test-env` - Build and run RHEL 7 VS Code Remote SSH test container
+- `make attach-test` - Attach to running test container with bash shell
+- `make stop-test` - Stop the running test container
+
+### **Sysroot Management Commands:**
+- `make install-sysroot` - Install sysroot toolchain in running test container  
+- `make uninstall-sysroot` - Remove sysroot toolchain from test container
+
+### **Utility Commands:**
+- `make help` - Show all available commands
+- `make check` - Check if toolchain exists in output directory
+- `make clean` - Remove container images
+- `make clean-output` - Remove toolchain output directory
+
 ## 📋 What's Included
 
 ### **Container Features:**
-- ✅ **RHEL 7 base** (Red Hat UBI)
-- ✅ **SSH daemon** for remote connections
-- ✅ **Test user** with sudo access
-- ✅ **Development tools** (git, make, nodejs, python3)
+- ✅ **RHEL 7 UBI base** with glibc 2.17 (simulates production servers)
+- ✅ **SSH daemon** configured for Remote SSH connections
+- ✅ **Developer user** with sudo privileges and proper temp directory
+- ✅ **Python development ready** (no C/C++ bloat for Python workflows)
 
-### **Sample Project:**
-- ✅ **Modern C++17 code** with structured bindings
-- ✅ **VS Code workspace** with IntelliSense configuration
-- ✅ **Build tasks** for both system and sysroot compilers
-- ✅ **Debug configurations** for GDB debugging
-- ✅ **Makefile** with multiple targets
+### **Sysroot Toolchain:**
+- ✅ **Modern glibc 2.28** for VS Code server compatibility
+- ✅ **GCC 8.5.0** toolchain (crosstool-ng 1.26.0)
+- ✅ **patchelf 0.18.0** for dynamic library patching
+- ✅ **Environment variables** for VS Code server integration
+- ✅ **Isolated installation** that won't affect system libraries
 
-## 🔧 Testing Workflow
+## 🔧 Complete Testing Workflow
 
-### **1. Install Sysroot Toolchain**
+### **1. Build and Verify Toolchain**
 ```bash
-# In another terminal, copy files to the running container
-podman cp exported-toolchain/. rhel7-vscode-test:/home/developer/
-
-# Connect to the container
-podman exec -it rhel7-vscode-test bash
-
-# Install the toolchain
-cd /home/developer
-./install-toolchain.sh
+# Build everything from scratch
+make build && make build-toolchain && make verify && make package
 ```
 
-### **2. VS Code Remote SSH Setup**
+### **2. Start Test Environment**
+```bash
+# Start RHEL 7 container (Terminal 1)
+make test-env
+
+# Container info will show:
+# 🔌 VS Code Connection:
+#    Host: localhost:2222
+#    User: developer  
+#    Password: developer
+```
+
+### **3. Install Sysroot (Automated)**
+```bash
+# In another terminal (Terminal 2)
+make install-sysroot
+
+# This automatically:
+# ✅ Copies toolchain files to container
+# ✅ Fixes file permissions for developer user
+# ✅ Installs sysroot to /opt/rhel7-sysroot
+# ✅ Installs patchelf for VS Code server
+# ✅ Sets up environment variables
+```
+
+### **4. VS Code Remote SSH Setup**
 1. Install "Remote - SSH" extension in VS Code
 2. Add SSH configuration:
    ```
@@ -58,140 +104,199 @@ cd /home/developer
        Port 2222
        User developer
    ```
-3. Connect to `rhel7-test`
-4. Open folder: `/home/developer/test-project`
+3. Connect to `rhel7-test` - should work now with glibc 2.28!
 
-### **3. Test the Toolchain**
+### **5. Container Management**
 ```bash
-# Check available toolchains
-make info
+# Attach to container for debugging
+make attach-test
 
-# Build with system compiler (RHEL 7 default)
-make all
-make test
+# Remove sysroot to test failure again  
+make uninstall-sysroot
 
-# Build with custom sysroot toolchain
-make sysroot  
-make test
+# Reinstall sysroot
+make install-sysroot
+
+# Stop container when done
+make stop-test
 ```
 
 ## 🎯 Testing Scenarios
 
-### **IntelliSense Testing:**
-- Open `main.cpp` in VS Code
-- Verify syntax highlighting
-- Test code completion
-- Check error detection
+### **Python Development Testing:**
+1. **Connect VS Code Remote SSH** to the container
+2. **Install Python extension** in the remote environment
+3. **Create Python projects** and verify they work correctly
+4. **Test debugging** with Python debugger
+5. **Verify terminal** and integrated shell work properly
 
-### **Build System Testing:**
-- Use **Ctrl+Shift+P** → "Tasks: Run Task"
-- Try different build tasks:
-  - `build-system` - Uses RHEL 7 system compiler
-  - `build-sysroot` - Uses custom sysroot toolchain
-  - `toolchain-info` - Shows compiler information
+### **VS Code Server Compatibility:**
+- **Without sysroot**: VS Code Remote SSH fails with glibc errors
+- **With sysroot**: VS Code Remote SSH connects successfully
+- **Environment**: All VS Code features work (terminal, debugger, extensions)
 
-### **Debugging Testing:**
-- Set breakpoints in `main.cpp`
-- Use **F5** to start debugging
-- Test both debug configurations:
-  - "Debug with System GCC"
-  - "Debug with Sysroot GCC"
+### **Command Testing:**
+```bash
+# Test glibc versions
+podman exec --user developer rhel7-vscode-test bash -c "ldd --version"
+# Output: ldd (GNU libc) 2.17
 
-### **C++17 Features Testing:**
-The sample code tests:
-- ✅ Structured bindings: `auto [size, hasItems] = test->getStats()`
-- ✅ Smart pointers: `std::make_unique<TestClass>()`
-- ✅ Range-based for loops
-- ✅ Auto type deduction
-- ✅ STL containers
+# Test sysroot toolchain  
+podman exec rhel7-vscode-test /opt/rhel7-sysroot/x86_64-linux-gnu/bin/x86_64-linux-gnu-gcc --version
+# Output: x86_64-linux-gnu-gcc (crosstool-NG 1.26.0) 8.5.0
+
+# Test environment variables
+podman exec --user developer rhel7-vscode-test bash -c "source ~/.bashrc && env | grep VSCODE"
+```
+
+### **Make Command Testing:**
+```bash
+# Build workflow
+make build            # ✅ Build crosstool-ng container
+make build-toolchain  # ✅ Build sysroot (30-60 min)  
+make verify          # ✅ Verify all components work
+make package         # ✅ Create distribution package
+
+# Test workflow  
+make test-env        # ✅ Start RHEL 7 container
+make install-sysroot # ✅ Install sysroot as developer user
+make attach-test     # ✅ Attach to container for debugging
+make uninstall-sysroot # ✅ Remove sysroot
+make stop-test       # ✅ Stop container
+```
 
 ## 📊 Expected Results
 
-### **System Compiler (RHEL 7 default):**
+### **Before Sysroot Installation:**
 ```bash
-$ make info
-System compiler: /usr/bin/g++
-System compiler version: g++ (GCC) 4.8.5 20150623 (Red Hat 4.8.5-44)
+# VS Code Remote SSH connection fails
+❌ VS Code Remote SSH will FAIL to connect initially
+❌ Due to outdated glibc 2.17
+
+# System info
+OS: Red Hat Enterprise Linux Server release 7.9 (Maipo)
+glibc: ldd (GNU libc) 2.17
 ```
 
-### **Sysroot Compiler (After installation):**
+### **After Sysroot Installation:**
 ```bash
-$ make info  
-Sysroot compiler: /opt/rhel7-sysroot/bin/x86_64-unknown-linux-gnu-g++
-Sysroot compiler version: x86_64-unknown-linux-gnu-g++ (crosstool-NG 1.26.0) 8.5.0
+# VS Code Remote SSH works perfectly
+✅ VS Code Remote SSH connects successfully
+✅ All VS Code features available for Python development
+
+# Toolchain available
+/opt/rhel7-sysroot/x86_64-linux-gnu/bin/x86_64-linux-gnu-gcc --version
+# x86_64-linux-gnu-gcc (crosstool-NG 1.26.0) 8.5.0
+
+# Environment configured
+VSCODE_SERVER_PATCHELF_PATH=/usr/local/bin/patchelf
+VSCODE_SERVER_CUSTOM_GLIBC_LINKER=/opt/rhel7-sysroot/x86_64-linux-gnu/x86_64-linux-gnu/sysroot/lib/ld-linux-x86-64.so.2
+VSCODE_SERVER_CUSTOM_GLIBC_PATH=/opt/rhel7-sysroot/x86_64-linux-gnu/x86_64-linux-gnu/sysroot/lib:/opt/rhel7-sysroot/x86_64-linux-gnu/x86_64-linux-gnu/sysroot/usr/lib
 ```
 
-### **VS Code Integration:**
-- ✅ IntelliSense uses sysroot headers
-- ✅ Error detection with modern C++ standards
-- ✅ Debugging works with both toolchains
-- ✅ Build tasks execute correctly
+### **Python Development:**
+- ✅ **Full VS Code experience** on RHEL 7 servers
+- ✅ **Python debugging** and IntelliSense work perfectly
+- ✅ **Terminal integration** with proper environment
+- ✅ **Extension support** for Python development
+- ✅ **No system impact** - isolated sysroot installation
 
 ## 🔧 Advanced Usage
 
-### **Custom Toolchain Path:**
-Edit `.vscode/c_cpp_properties.json` to use sysroot toolchain:
-```json
-{
-    "configurations": [{
-        "name": "RHEL7-Sysroot",
-        "compilerPath": "/opt/rhel7-sysroot/bin/x86_64-unknown-linux-gnu-gcc",
-        "includePath": ["/opt/rhel7-sysroot/x86_64-unknown-linux-gnu/sysroot/usr/include/**"]
-    }]
-}
+### **Make Variables (Customizable):**
+```makefile
+IMAGE_NAME = rhel7-sysroot
+TEST_IMAGE_NAME = rhel7-vscode-test  
+SSH_PORT = 2222
+TEST_USER = developer
+SYSROOT_INSTALL_PATH = /opt/rhel7-sysroot
+PATCHELF_VERSION = 0.18.0
 ```
 
-### **Environment Variables:**
-VS Code server will automatically use:
+### **Environment Variables (Auto-configured):**
+VS Code server automatically uses:
 ```bash
+export TMPDIR=/home/developer/.tmp          # Proper temp directory
 export VSCODE_SERVER_PATCHELF_PATH=/usr/local/bin/patchelf
-export VSCODE_SERVER_CUSTOM_GLIBC_LINKER=/opt/rhel7-sysroot/x86_64-unknown-linux-gnu/sysroot/lib/ld-linux-x86-64.so.2
+export VSCODE_SERVER_CUSTOM_GLIBC_LINKER=/opt/rhel7-sysroot/x86_64-linux-gnu/x86_64-linux-gnu/sysroot/lib/ld-linux-x86-64.so.2
+export VSCODE_SERVER_CUSTOM_GLIBC_PATH=/opt/rhel7-sysroot/x86_64-linux-gnu/x86_64-linux-gnu/sysroot/lib:/opt/rhel7-sysroot/x86_64-linux-gnu/x86_64-linux-gnu/sysroot/usr/lib
 ```
 
-### **Container Management:**
+### **Manual Container Management:**
 ```bash
-# Start in background
-podman run -d -p 2222:22 --name rhel7-vscode-test rhel7-vscode-test
+# Use make commands instead of manual podman commands:
+make test-env        # Automated container startup
+make attach-test     # Attach as developer user  
+make install-sysroot # Automated sysroot installation
+make stop-test       # Clean container shutdown
+```
 
-# Copy files to running container
-podman cp exported-toolchain/. rhel7-vscode-test:/home/developer/
+### **Production Deployment:**
+```bash
+# Transfer to real RHEL 7/CentOS 7 server
+scp exported-toolchain/* user@production-server:
+ssh user@production-server
+./install-toolchain.sh
 
-# Execute commands in container
-podman exec -it rhel7-vscode-test bash
-
-# Stop container
-podman stop rhel7-vscode-test
+# VS Code Remote SSH now works on production server!
 ```
 
 ## 🐛 Troubleshooting
 
-### **SSH Connection Issues:**
+### **Make Command Issues:**
 ```bash
-# Check if container is running
-podman ps
+# Check container status
+make stop-test && make test-env  # Restart container
 
-# Check SSH daemon status  
-podman exec rhel7-vscode-test systemctl status sshd
+# Verify toolchain build
+make verify
 
-# Check port forwarding
+# Check package contents
+ls -la exported-toolchain/
+
+# Test individual steps
+make attach-test  # Debug inside container
+```
+
+### **VS Code Connection Issues:**
+```bash
+# Test container connectivity
+podman ps | grep rhel7-vscode-test
 ss -tlnp | grep 2222
+
+# Verify sysroot installation
+make attach-test
+ls -la /opt/rhel7-sysroot/
+env | grep VSCODE
 ```
 
-### **Toolchain Issues:**
+### **Installation Issues:**
 ```bash
-# Verify installation
-ls -la /opt/rhel7-sysroot/bin/
+# Check file permissions
+make attach-test
+ls -la ~/        # Files should be owned by developer
 
-# Test compilation manually
-/opt/rhel7-sysroot/bin/x86_64-unknown-linux-gnu-g++ --version
+# Test temp directory
+echo $TMPDIR     # Should be /home/developer/.tmp
+touch $TMPDIR/test && rm $TMPDIR/test  # Should work
 
-# Check environment variables
-env | grep VSCODE_SERVER
+# Reinstall if needed
+make uninstall-sysroot && make install-sysroot
 ```
 
-### **VS Code Issues:**
-- Reload VS Code window after toolchain installation
-- Check VS Code Remote SSH logs
-- Verify `.vscode/c_cpp_properties.json` configuration
+### **Python Development Issues:**
+- **Restart VS Code** after sysroot installation
+- **Reload window** if extensions don't load
+- **Check Python interpreter** path in VS Code
+- **Verify terminal** works in integrated terminal
 
-This test environment provides a comprehensive way to validate that your RHEL7 sysroot toolchain works correctly with VS Code Remote SSH development!
+## 🎯 Perfect for Python Development
+
+This toolchain is specifically optimized for **Python developers** who need VS Code Remote SSH to work on legacy RHEL 7/CentOS 7 servers. No C/C++ configuration needed - just install and code Python! 🐍
+
+### **Key Benefits:**
+- ✅ **VS Code Remote SSH works** on old servers
+- ✅ **Python development ready** out of the box  
+- ✅ **No system impact** - isolated sysroot
+- ✅ **Easy automation** with make commands
+- ✅ **Production safe** for legacy environments
