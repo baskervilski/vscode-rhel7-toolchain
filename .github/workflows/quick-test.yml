@@ -20,10 +20,10 @@ jobs:
     - name: Test container build
       run: |
         echo "🏗️ Testing container build..."
-        make build
+        make docker-build
         
         echo "✅ Container built successfully"
-        podman images | grep rhel7-sysroot
+        docker images | grep rhel7-sysroot
 
     - name: Test toolchain build (if not skipped)
       if: ${{ !inputs.skip_toolchain }}

@@ -12,8 +12,10 @@ OUTPUT_DIR = $(shell pwd)/toolchain-output
 help:
 	@echo "Available targets:"
 	@echo "  build           - Build the container image using podman"
+	@echo "  docker-build    - Build the container image using docker (CI/CD)"
 	@echo "  run             - Start container with mounted output directory (interactive)"
 	@echo "  build-toolchain - Build toolchain directly to mounted output (automated)"
+	@echo "  docker-toolchain - Build toolchain using docker (CI/CD compatible)"
 	@echo "  package         - Package toolchain for distribution"
 	@echo "  check           - Check if toolchain exists in mounted output"
 	@echo "  clean           - Remove the container image"
@@ -24,6 +26,11 @@ help:
 .PHONY: build
 build:
 	podman build -t $(IMAGE_NAME) .
+
+# Build the container image using Docker (CI/CD compatible)
+.PHONY: docker-build
+docker-build:
+	docker build -t $(IMAGE_NAME) .
 
 # Start container with mounted output directory (interactive)
 .PHONY: run
@@ -80,6 +87,26 @@ build-toolchain:
 	podman run --rm --name $(CONTAINER_NAME) \
 		-v $(OUTPUT_DIR):/home/ctng/output:Z \
 		--userns=keep-id \
+		$(IMAGE_NAME) ./build-toolchain.sh
+
+# Build toolchain using Docker (CI/CD compatible)
+.PHONY: docker-toolchain
+docker-toolchain:
+	@echo "Creating output directory: $(OUTPUT_DIR)"
+	@mkdir -p $(OUTPUT_DIR)
+	@echo "Setting proper permissions for CI/CD environment..."
+	@chmod 777 $(OUTPUT_DIR)
+	@echo "Building toolchain using Docker (CI/CD mode)..."
+	@echo "This will take 30-60 minutes..."
+	@echo "🔧 Fixing permissions and running build script..."
+	@docker run --rm --name $(CONTAINER_NAME) \
+		-v $(OUTPUT_DIR):/home/ctng/output \
+		--user root \
+		$(IMAGE_NAME) bash -c "chown -R ctng:ctng /home/ctng/output"
+	@echo "🚀 Starting filtered build process..."
+	docker run --rm --name $(CONTAINER_NAME)-build \
+		-v $(OUTPUT_DIR):/home/ctng/output \
+		--user ctng \
 		$(IMAGE_NAME) ./build-toolchain.sh
 
 # Package mounted toolchain for distribution
