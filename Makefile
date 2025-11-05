@@ -9,9 +9,9 @@ EXPORT_DIR = ./exported-toolchain
 TOOLCHAIN_ARCHIVE = rhel7-toolchain-$(shell date +%Y%m%d-%H%M%S).tar.gz
 OUTPUT_DIR = $(shell pwd)/toolchain-output
 DOCKERFILE_TEST = Dockerfile.test
-TOOLCHAIN_PREFIX = x86_64-unknown-linux-gnu
-GCC_BINARY = $(OUTPUT_DIR)/bin/$(TOOLCHAIN_PREFIX)-gcc
-SYSROOT_DIR = $(OUTPUT_DIR)/$(TOOLCHAIN_PREFIX)/sysroot
+TOOLCHAIN_PREFIX = x86_64-linux-gnu
+GCC_BINARY = $(OUTPUT_DIR)/$(TOOLCHAIN_PREFIX)/bin/$(TOOLCHAIN_PREFIX)-gcc
+SYSROOT_DIR = $(OUTPUT_DIR)/$(TOOLCHAIN_PREFIX)/$(TOOLCHAIN_PREFIX)/sysroot
 PATCHELF_VERSION = 0.18.0
 PATCHELF_URL = https://github.com/NixOS/patchelf/releases/download/$(PATCHELF_VERSION)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz
 INSTALL_SCRIPT = install-toolchain.sh
@@ -125,7 +125,7 @@ verify:
 	@echo "🔍 Checking essential toolchain components..."
 	@MISSING=""; \
 	for tool in gcc g++ ld ar strip objdump; do \
-		if [ ! -f "$(OUTPUT_DIR)/bin/$(TOOLCHAIN_PREFIX)-$$tool" ]; then \
+		if [ ! -f "$(OUTPUT_DIR)/$(TOOLCHAIN_PREFIX)/bin/$(TOOLCHAIN_PREFIX)-$$tool" ]; then \
 			MISSING="$$MISSING $(TOOLCHAIN_PREFIX)-$$tool"; \
 		fi; \
 	done; \
