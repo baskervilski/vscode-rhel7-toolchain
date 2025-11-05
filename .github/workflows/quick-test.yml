@@ -1,0 +1,91 @@
+name: Quick Build Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_toolchain:
+        description: 'Skip toolchain build (just test container)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  quick-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Test container build
+      run: |
+        echo "🏗️ Testing container build..."
+        make build
+        
+        echo "✅ Container built successfully"
+        podman images | grep rhel7-sysroot
+
+    - name: Test toolchain build (if not skipped)
+      if: ${{ !inputs.skip_toolchain }}
+      run: |
+        echo "⏳ Testing toolchain build (will timeout after 10 minutes for quick test)..."
+        echo "💡 This is just to verify the build starts correctly"
+        
+        timeout 10m make build-toolchain || {
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "⏰ Build timed out after 10 minutes (expected for quick test)"
+            echo "🔍 Checking if build started correctly..."
+            if [ -d "toolchain-output" ]; then
+              echo "✅ Build started and created output directory"
+              ls -la toolchain-output/ || echo "Output directory empty (normal for quick test)"
+            else
+              echo "❌ Build failed to start - no output directory created"
+              exit 1
+            fi
+          else
+            echo "❌ Build failed with exit code: $EXIT_CODE"
+            exit 1
+          fi
+        }
+
+    - name: Test packaging setup
+      run: |
+        echo "📦 Testing packaging setup..."
+        
+        # Create dummy toolchain for packaging test
+        mkdir -p toolchain-output/bin
+        echo "#!/bin/bash" > toolchain-output/bin/x86_64-unknown-linux-gnu-gcc
+        echo "echo 'dummy gcc for testing'" >> toolchain-output/bin/x86_64-unknown-linux-gnu-gcc
+        chmod +x toolchain-output/bin/x86_64-unknown-linux-gnu-gcc
+        
+        # Test packaging
+        make package
+        
+        echo "✅ Packaging test successful"
+        echo "📋 Package contents:"
+        ls -la exported-toolchain/
+
+    - name: Validate required files
+      run: |
+        echo "🔍 Validating required files exist..."
+        
+        REQUIRED_FILES=(
+          "Dockerfile"
+          "Makefile" 
+          "build-toolchain.sh"
+          "install-toolchain.sh"
+          "x86_64-gcc-8.5.0-glibc-2.28.config"
+        )
+        
+        for file in "${REQUIRED_FILES[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ $file"
+          else
+            echo "❌ Missing: $file"
+            exit 1
+          fi
+        done
+        
+        echo ""
+        echo "🎉 All validation tests passed!"
