@@ -1,0 +1,36 @@
+# Simple RHEL 7 container for testing VS Code Remote SSH compatibility
+# This container demonstrates the glibc compatibility issue and solution
+
+FROM registry.access.redhat.com/ubi7/ubi:latest
+
+LABEL description="Basic RHEL 7 container to test VS Code Remote SSH glibc/libstdc++ compatibility"
+
+# Install SSH server and basic utilities
+RUN yum update -y && \
+    yum install -y \
+    openssh-server \
+    sudo \
+    which \
+    && yum clean all
+
+# Create test user with sudo privileges
+RUN useradd -m -s /bin/bash developer && \
+    echo "developer:developer" | chpasswd && \
+    echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Configure SSH
+RUN ssh-keygen -A && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Create directory for sysroot installation (with proper permissions)
+RUN mkdir -p /opt/rhel7-sysroot && \
+    chown developer:developer /opt/rhel7-sysroot
+
+# Create startup script that shows system info and instructions
+RUN printf '#!/bin/bash\necho "=== RHEL 7 VS Code Remote SSH Test Container ==="\necho "Starting SSH daemon on port 22..."\n/usr/sbin/sshd -D &\n\necho ""\necho "📊 System Info:"\necho "   OS: $(cat /etc/redhat-release)"\necho "   glibc: $(ldd --version | head -1)"\necho ""\necho "🔌 SSH Connection:"\necho "   User: developer"\necho "   Password: developer"\necho "   Port: 22 (mapped to host port)"\necho ""\necho "💡 Expected behavior:"\necho "   ❌ VS Code Remote SSH will FAIL to connect initially"\necho "   ❌ Due to outdated glibc"\necho "   ✅ Should work after installing sysroot toolchain"\necho ""\necho "📖 To fix:"\necho "   1. Copy toolchain files to /home/developer/"\necho "   2. Run: ./install-toolchain.sh"\necho "   3. Try VS Code Remote SSH again"\necho ""\n\ntail -f /dev/null\n' > /usr/local/bin/start-ssh.sh
+
+RUN chmod +x /usr/local/bin/start-ssh.sh
+
+EXPOSE 22
+
+CMD ["/usr/local/bin/start-ssh.sh"]

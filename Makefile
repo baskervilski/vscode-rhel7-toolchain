@@ -3,9 +3,22 @@
 # Variables
 IMAGE_NAME = rhel7-sysroot
 CONTAINER_NAME = rhel7-sysroot-container
+TEST_IMAGE_NAME = rhel7-vscode-test
+TEST_CONTAINER_NAME = rhel7-vscode-test
 EXPORT_DIR = ./exported-toolchain
 TOOLCHAIN_ARCHIVE = rhel7-toolchain-$(shell date +%Y%m%d-%H%M%S).tar.gz
 OUTPUT_DIR = $(shell pwd)/toolchain-output
+DOCKERFILE_TEST = Dockerfile.test
+TOOLCHAIN_PREFIX = x86_64-unknown-linux-gnu
+GCC_BINARY = $(OUTPUT_DIR)/bin/$(TOOLCHAIN_PREFIX)-gcc
+SYSROOT_DIR = $(OUTPUT_DIR)/$(TOOLCHAIN_PREFIX)/sysroot
+PATCHELF_VERSION = 0.18.0
+PATCHELF_URL = https://github.com/NixOS/patchelf/releases/download/$(PATCHELF_VERSION)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz
+INSTALL_SCRIPT = install-toolchain.sh
+BUILD_SCRIPT = build-toolchain.sh
+SSH_PORT = 2222
+TEST_USER = developer
+SYSROOT_INSTALL_PATH = /opt/rhel7-sysroot
 
 # Default target
 .PHONY: help
@@ -18,6 +31,10 @@ help:
 	@echo "  docker-toolchain - Build toolchain using docker (CI/CD compatible)"
 	@echo "  package         - Package toolchain for distribution"
 	@echo "  check           - Check if toolchain exists in mounted output"
+	@echo "  verify          - Verify toolchain build completeness and functionality"
+	@echo "  test-env        - Build and run VS Code Remote SSH test environment"
+	@echo "  install-sysroot - Install sysroot toolchain in running test container"
+	@echo "  uninstall-sysroot - Remove sysroot toolchain from test container"
 	@echo "  clean           - Remove the container image"
 	@echo "  clean-output    - Remove mounted output directory" 
 	@echo "  rebuild         - Clean and build the container image"
@@ -69,11 +86,66 @@ check:
 		echo "❌ No toolchain found in: $(OUTPUT_DIR)"; \
 		echo ""; \
 		echo "Build options:"; \
-		echo "  Interactive: make run -> ./build-toolchain.sh"; \
+		echo "  Interactive: make run -> ./$(BUILD_SCRIPT)"; \
 		echo "  Automated:   make build-toolchain"; \
 	fi
 
-
+# Verify toolchain build completeness and functionality
+.PHONY: verify
+verify:
+	@echo "🔍 Verifying toolchain build..."
+	@if [ ! -d "$(OUTPUT_DIR)" ]; then \
+		echo "❌ No toolchain output directory found: $(OUTPUT_DIR)"; \
+		exit 1; \
+	fi
+	@echo "📁 Toolchain output contents:"
+	@ls -la $(OUTPUT_DIR)/
+	@echo ""
+	@echo "🔍 Looking for GCC binary..."
+	@if [ -f "$(GCC_BINARY)" ]; then \
+		echo "✅ Found GCC binary"; \
+		$(GCC_BINARY) --version; \
+		echo ""; \
+		echo "🔍 Testing basic compilation..."; \
+		echo 'int main(){return 0;}' > /tmp/test.c; \
+		$(GCC_BINARY) /tmp/test.c -o /tmp/test || { \
+			echo "❌ Basic compilation test failed"; \
+			exit 1; \
+		}; \
+		echo "✅ Basic compilation test passed"; \
+		rm -f /tmp/test.c /tmp/test; \
+	else \
+		echo "❌ GCC binary not found"; \
+		find $(OUTPUT_DIR)/ -name "*gcc*" -type f 2>/dev/null | head -5 || echo "No GCC files found"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "🔍 Checking essential toolchain components..."
+	@MISSING=""; \
+	for tool in gcc g++ ld ar strip objdump; do \
+		if [ ! -f "$(OUTPUT_DIR)/bin/$(TOOLCHAIN_PREFIX)-$$tool" ]; then \
+			MISSING="$$MISSING $(TOOLCHAIN_PREFIX)-$$tool"; \
+		fi; \
+	done; \
+	if [ -n "$$MISSING" ]; then \
+		echo "❌ Missing essential tools:$$MISSING"; \
+		exit 1; \
+	else \
+		echo "✅ All essential toolchain components found"; \
+	fi
+	@echo ""
+	@echo "🔍 Checking sysroot structure..."
+	@if [ -d "$(SYSROOT_DIR)" ]; then \
+		echo "✅ Sysroot directory found"; \
+		echo "📂 Sysroot contents:"; \
+		ls -la $(SYSROOT_DIR)/ | head -10; \
+	else \
+		echo "❌ Sysroot directory not found"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "✅ Toolchain verification completed successfully!"
+	@echo "🎉 Ready for packaging: make package"
 
 # Build toolchain directly to mounted output directory
 .PHONY: build-toolchain
@@ -82,12 +154,12 @@ build-toolchain:
 	@mkdir -p $(OUTPUT_DIR)
 	@echo "Setting proper permissions for output directory..."
 	@chmod 755 $(OUTPUT_DIR)
-	@echo "Building toolchain using build-toolchain.sh script..."
+	@echo "Building toolchain using $(BUILD_SCRIPT) script..."
 	@echo "This will take 30-60 minutes..."
 	podman run --rm --name $(CONTAINER_NAME) \
 		-v $(OUTPUT_DIR):/home/ctng/output:Z \
 		--userns=keep-id \
-		$(IMAGE_NAME) ./build-toolchain.sh
+		$(IMAGE_NAME) ./$(BUILD_SCRIPT)
 
 # Build toolchain using Docker (CI/CD compatible)
 .PHONY: docker-toolchain
@@ -107,7 +179,7 @@ docker-toolchain:
 	docker run --rm --name $(CONTAINER_NAME)-build \
 		-v $(OUTPUT_DIR):/home/ctng/output \
 		--user ctng \
-		$(IMAGE_NAME) ./build-toolchain.sh
+		$(IMAGE_NAME) ./$(BUILD_SCRIPT)
 
 # Package mounted toolchain for distribution
 .PHONY: package
@@ -122,16 +194,16 @@ package:
 	@echo "Creating portable archive..."
 	@tar -czf $(TOOLCHAIN_ARCHIVE) -C $(OUTPUT_DIR) .
 	@echo "Downloading patchelf for offline installation..."
-	@wget -q -P $(EXPORT_DIR) https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz
+	@wget -q -P $(EXPORT_DIR) $(PATCHELF_URL)
 	@echo "Copying installation script..."
-	@cp install-toolchain.sh $(EXPORT_DIR)/
-	@chmod +x $(EXPORT_DIR)/install-toolchain.sh
+	@cp $(INSTALL_SCRIPT) $(EXPORT_DIR)/
+	@chmod +x $(EXPORT_DIR)/$(INSTALL_SCRIPT)
 	@mv $(TOOLCHAIN_ARCHIVE) $(EXPORT_DIR)/
 	@echo ""
 	@echo "✅ Toolchain packaged successfully!"
 	@echo "📦 Archive: $(EXPORT_DIR)/$(TOOLCHAIN_ARCHIVE)"
-	@echo "📋 Installer: $(EXPORT_DIR)/install-toolchain.sh"
-	@echo "🔧 patchelf: $(EXPORT_DIR)/patchelf-0.18.0-x86_64.tar.gz"
+	@echo "📋 Installer: $(EXPORT_DIR)/$(INSTALL_SCRIPT)"
+	@echo "🔧 patchelf: $(EXPORT_DIR)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz"
 	@echo ""
 	@echo "Transfer to RHEL 7 server:"
 	@echo "  scp $(EXPORT_DIR)/* user@rhel7-server:"
@@ -143,3 +215,78 @@ clean-output:
 	@echo "Cleaning mounted output directory..."
 	@rm -rf $(OUTPUT_DIR)
 	@echo "Output cleanup complete."
+
+# Build and run VS Code Remote SSH test environment
+.PHONY: test-env
+test-env:
+	@echo "🧪 Building simple RHEL 7 VS Code Remote SSH test container..."
+	@podman build -f $(DOCKERFILE_TEST) -t $(TEST_IMAGE_NAME) .
+	@echo ""
+	@echo "🚀 Starting RHEL 7 test container..."
+	@echo ""
+	@echo "� Expected Behavior:"
+	@echo "   ❌ VS Code Remote SSH will FAIL initially (outdated glibc)"
+	@echo "   ✅ Should work after sysroot installation"
+	@echo ""
+	@echo "🔌 VS Code Connection:"
+	@echo "   Host: localhost:$(SSH_PORT)"
+	@echo "   User: $(TEST_USER)"
+	@echo "   Password: $(TEST_USER)"
+	@echo ""
+	@echo "🛠️  To install sysroot (in another terminal):"
+	@echo "   podman cp $(EXPORT_DIR)/. $(TEST_CONTAINER_NAME):/home/$(TEST_USER)/"
+	@echo "   podman exec -it $(TEST_CONTAINER_NAME) bash"
+	@echo "   cd /home/$(TEST_USER) && ./$(INSTALL_SCRIPT)"
+	@echo ""
+	@echo "Press Ctrl+C to stop when done testing"
+	@echo ""
+	@podman run --rm -it \
+		-p $(SSH_PORT):22 \
+		--name $(TEST_CONTAINER_NAME) \
+		$(TEST_IMAGE_NAME)
+
+# Install sysroot toolchain in running test container
+.PHONY: install-sysroot
+install-sysroot:
+	@echo "📦 Installing sysroot toolchain in test container..."
+	@if ! podman ps --format "{{.Names}}" | grep -q "$(TEST_CONTAINER_NAME)"; then \
+		echo "❌ Test container not running. Start it first with: make test-env"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(EXPORT_DIR)" ]; then \
+		echo "❌ No exported toolchain found. Build and package first:"; \
+		echo "   make build && make build-toolchain && make package"; \
+		exit 1; \
+	fi
+	@echo "📋 Copying toolchain files to container..."
+	@podman cp $(EXPORT_DIR)/. $(TEST_CONTAINER_NAME):/home/$(TEST_USER)/
+	@echo "🔧 Installing toolchain..."
+	@podman exec -it $(TEST_CONTAINER_NAME) bash -c "cd /home/$(TEST_USER) && chmod +x $(INSTALL_SCRIPT) && ./$(INSTALL_SCRIPT)"
+	@echo ""
+	@echo "✅ Sysroot toolchain installed successfully!"
+	@echo "🔌 VS Code Remote SSH should now work with the container"
+	@echo "📊 Test the installation:"
+	@echo "   podman exec $(TEST_CONTAINER_NAME) $(SYSROOT_INSTALL_PATH)/bin/$(TOOLCHAIN_PREFIX)-gcc --version"
+
+# Remove sysroot toolchain from test container
+.PHONY: uninstall-sysroot
+uninstall-sysroot:
+	@echo "🗑️  Uninstalling sysroot toolchain from test container..."
+	@if ! podman ps --format "{{.Names}}" | grep -q "$(TEST_CONTAINER_NAME)"; then \
+		echo "❌ Test container not running. Start it first with: make test-env"; \
+		exit 1; \
+	fi
+	@echo "🧹 Removing sysroot installation..."
+	@podman exec $(TEST_CONTAINER_NAME) bash -c "sudo rm -rf $(SYSROOT_INSTALL_PATH)"
+	@echo "🧹 Removing patchelf installation..."
+	@podman exec $(TEST_CONTAINER_NAME) bash -c "sudo rm -f /usr/local/bin/patchelf"
+	@echo "🧹 Removing VS Code environment variables..."
+	@podman exec $(TEST_CONTAINER_NAME) bash -c "rm -f ~/vscode-server-env.sh"
+	@podman exec $(TEST_CONTAINER_NAME) bash -c "sed -i '/vscode-server-env.sh/d' ~/.bashrc"
+	@echo "🧹 Removing installation files..."
+	@podman exec $(TEST_CONTAINER_NAME) bash -c "cd /home/$(TEST_USER) && rm -f *.tar.gz $(INSTALL_SCRIPT) vscode-cpp-config.json"
+	@echo ""
+	@echo "✅ Sysroot toolchain uninstalled successfully!"
+	@echo "❌ VS Code Remote SSH will now fail again (back to glibc 2.17)"
+	@echo "📊 Verify removal:"
+	@echo "   podman exec $(TEST_CONTAINER_NAME) ls -la $(SYSROOT_INSTALL_PATH)  # Should not exist"

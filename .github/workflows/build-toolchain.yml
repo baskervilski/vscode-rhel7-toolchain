@@ -71,24 +71,7 @@ jobs:
 
     - name: Verify toolchain build
       run: |
-        echo "🔍 Verifying toolchain build..."
-        if [ ! -d "toolchain-output" ]; then
-          echo "❌ No toolchain output directory found"
-          exit 1
-        fi
-        
-        echo "📁 Toolchain output contents:"
-        ls -la toolchain-output/
-        
-        echo "🔍 Looking for GCC binary..."
-        if [ -f "toolchain-output/bin/x86_64-unknown-linux-gnu-gcc" ]; then
-          echo "✅ Found GCC binary"
-          toolchain-output/bin/x86_64-unknown-linux-gnu-gcc --version
-        else
-          echo "❌ GCC binary not found"
-          find toolchain-output/ -name "*gcc*" -type f || echo "No GCC files found"
-          exit 1
-        fi
+        make verify
 
     - name: Package toolchain
       run: |
