@@ -162,6 +162,10 @@ build-toolchain:
 		-v $(OUTPUT_DIR):/home/ctng/output:Z \
 		--userns=keep-id \
 		$(IMAGE_NAME) ./$(BUILD_SCRIPT)
+	@echo "🔧 Ensuring proper file permissions..."
+	@find $(OUTPUT_DIR) -type d -exec chmod 755 {} \; 2>/dev/null || true
+	@find $(OUTPUT_DIR) -type f ! -path "*/bin/*" ! -path "*/libexec/*" -exec chmod 644 {} \; 2>/dev/null || true
+	@find $(OUTPUT_DIR) -type f \( -path "*/bin/*" -o -path "*/libexec/*" \) -exec chmod 755 {} \; 2>/dev/null || true
 
 # Build toolchain using Docker (CI/CD compatible)
 .PHONY: docker-toolchain
@@ -182,6 +186,14 @@ docker-toolchain:
 		-v $(OUTPUT_DIR):/home/ctng/output \
 		--user ctng \
 		$(IMAGE_NAME) ./$(BUILD_SCRIPT)
+	@echo "🔧 Fixing final file permissions after build..."
+	@docker run --rm --name $(CONTAINER_NAME)-perms \
+		-v $(OUTPUT_DIR):/home/ctng/output \
+		--user root \
+		$(IMAGE_NAME) bash -c "\
+			find /home/ctng/output -type d -exec chmod 755 {} \; && \
+			find /home/ctng/output -type f ! -path '*/bin/*' ! -path '*/libexec/*' -exec chmod 644 {} \; && \
+			find /home/ctng/output -type f \( -path '*/bin/*' -o -path '*/libexec/*' \) -exec chmod 755 {} \;"
 
 # Package mounted toolchain for distribution
 .PHONY: package
@@ -193,10 +205,19 @@ package:
 	fi
 	@echo "Packaging toolchain from: $(OUTPUT_DIR)"
 	@mkdir -p $(EXPORT_DIR)
+	@echo "Fixing file permissions for packaging..."
+	@find $(OUTPUT_DIR) -type d -exec chmod 755 {} + 2>/dev/null || true
+	@find $(OUTPUT_DIR) -type f ! -path "*/bin/*" ! -path "*/libexec/*" -exec chmod 644 {} + 2>/dev/null || true
+	@find $(OUTPUT_DIR) -type f \( -path "*/bin/*" -o -path "*/libexec/*" \) -exec chmod 755 {} + 2>/dev/null || true
 	@echo "Creating portable archive..."
 	@tar -czf $(TOOLCHAIN_ARCHIVE) -C $(OUTPUT_DIR) .
-	@echo "Downloading patchelf for offline installation..."
-	@wget -q -P $(EXPORT_DIR) $(PATCHELF_URL)
+	@echo "Preparing patchelf for offline installation..."
+	@if [ ! -f "$(EXPORT_DIR)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz" ]; then \
+		echo "Downloading patchelf..."; \
+		wget -q -P $(EXPORT_DIR) $(PATCHELF_URL); \
+	else \
+		echo "Using existing patchelf archive"; \
+	fi
 	@echo "Copying installation script..."
 	@cp $(INSTALL_SCRIPT) $(EXPORT_DIR)/
 	@chmod +x $(EXPORT_DIR)/$(INSTALL_SCRIPT)
@@ -260,11 +281,13 @@ install-sysroot:
 		echo "   make build && make build-toolchain && make package"; \
 		exit 1; \
 	fi
-	@echo "📋 Copying toolchain files to container..."
+	@echo "🧹 Cleaning old archives from container..."
+	@podman exec $(TEST_CONTAINER_NAME) bash -c "rm -f /home/$(TEST_USER)/rhel7-toolchain-*.tar.gz /home/$(TEST_USER)/patchelf-*.tar.gz /home/$(TEST_USER)/$(INSTALL_SCRIPT)"
+	@echo "📋 Copying fresh toolchain files to container..."
 	@podman cp $(EXPORT_DIR)/. $(TEST_CONTAINER_NAME):/home/$(TEST_USER)/
 	@echo "🔧 Fixing file permissions..."
 	@podman exec $(TEST_CONTAINER_NAME) chown -R $(TEST_USER):$(TEST_USER) /home/$(TEST_USER)/
-	@echo "🔧 Installing toolchain..."
+	@echo "🔧 Installing toolchain as non-root user..."
 	@podman exec -it --user $(TEST_USER) $(TEST_CONTAINER_NAME) bash -c "cd /home/$(TEST_USER) && chmod +x $(INSTALL_SCRIPT) && ./$(INSTALL_SCRIPT)"
 	@echo ""
 	@echo "✅ Sysroot toolchain installed successfully!"
