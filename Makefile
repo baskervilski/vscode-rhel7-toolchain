@@ -166,7 +166,7 @@ build-toolchain:
 	podman run --rm --name $(CONTAINER_NAME) \
 		-v $(OUTPUT_DIR):/home/ctng/output:Z \
 		--userns=keep-id \
-		$(IMAGE_NAME) ./$(BUILD_SCRIPT) true "$(CONFIG_FILE)"
+		$(IMAGE_NAME) ./$(BUILD_SCRIPT) --verbose --config "$(CONFIG_FILE)"
 	@echo "🔧 Ensuring proper file permissions..."
 	@find $(OUTPUT_DIR) -type d -exec chmod 755 {} \; 2>/dev/null || true
 	@find $(OUTPUT_DIR) -type f ! -path "*/bin/*" ! -path "*/libexec/*" -exec chmod 644 {} \; 2>/dev/null || true
@@ -191,7 +191,7 @@ docker-toolchain:
 	docker run --rm --name $(CONTAINER_NAME)-build \
 		-v $(OUTPUT_DIR):/home/ctng/output \
 		--user ctng \
-		$(IMAGE_NAME) ./$(BUILD_SCRIPT) false "$(CONFIG_FILE)"
+		$(IMAGE_NAME) ./$(BUILD_SCRIPT) --config "$(CONFIG_FILE)"
 	@echo "🔧 Fixing final file permissions after build..."
 	@docker run --rm --name $(CONTAINER_NAME)-perms \
 		-v $(OUTPUT_DIR):/home/ctng/output \
@@ -215,8 +215,10 @@ package:
 	@find $(OUTPUT_DIR) -type d -exec chmod 755 {} + 2>/dev/null || true
 	@find $(OUTPUT_DIR) -type f ! -path "*/bin/*" ! -path "*/libexec/*" -exec chmod 644 {} + 2>/dev/null || true
 	@find $(OUTPUT_DIR) -type f \( -path "*/bin/*" -o -path "*/libexec/*" \) -exec chmod 755 {} + 2>/dev/null || true
+	@echo "Ensuring export directory exists..."
+	@mkdir -p $(EXPORT_DIR) || { echo "❌ Failed to create export directory: $(EXPORT_DIR)"; exit 1; }
 	@echo "Creating portable archive..."
-	@tar -czfv $(TOOLCHAIN_ARCHIVE) -C $(OUTPUT_DIR) .
+	tar -czf $(TOOLCHAIN_ARCHIVE) -C $(OUTPUT_DIR) .
 	@echo "Preparing patchelf for offline installation..."
 	@if [ ! -f "$(EXPORT_DIR)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz" ]; then \
 		echo "Downloading patchelf..."; \

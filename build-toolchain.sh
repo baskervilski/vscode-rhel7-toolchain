@@ -3,9 +3,44 @@
 
 set -e
 
-# Parse arguments
-VERBOSE_MODE=${1:-false}
-CONFIG_FILE=${2:-x86_64-gcc-8.5.0-glibc-2.28.config}
+# Default values
+VERBOSE_MODE=false
+CONFIG_FILE="x86_64-gcc-8.5.0-glibc-2.28.config"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -v|--verbose)
+            VERBOSE_MODE=true
+            shift
+            ;;
+        -c|--config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo "Build crosstool-ng toolchain"
+            echo ""
+            echo "Options:"
+            echo "  -v, --verbose           Enable verbose output (show full build log)"
+            echo "  -c, --config CONFIG     Use specific config file (default: x86_64-gcc-8.5.0-glibc-2.28.config)"
+            echo "  -h, --help              Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0                                    # Use default config, filtered output"
+            echo "  $0 --verbose                          # Use default config, verbose output"
+            echo "  $0 --config my-config.config         # Use custom config, filtered output"
+            echo "  $0 --verbose --config my-config.config # Use custom config, verbose output"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # Ensure crosstool-ng is in PATH (Docker environment fix)
 export PATH=/crosstool-ng-1.26.0/out/bin:/usr/local/bin:$PATH
@@ -126,6 +161,9 @@ else
     echo "💡 Full build log available at: $BUILD_LOG"
     exit $BUILD_EXIT_CODE
 fi
+
+# Ensure all binaries in the sysroot directory are executable
+find $OUTPUT_DIRNAME -type f -exec chmod +x {} \;
 
 echo ""
 echo "Toolchain installed to: $OUTPUT_DIRNAME"
