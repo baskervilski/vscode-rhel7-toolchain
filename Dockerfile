@@ -48,8 +48,8 @@ ENV PATH=$PATH:/crosstool-ng-1.26.0/out/bin
 USER $CTNG_UNAME
 WORKDIR /home/$CTNG_UNAME
 
-# Copy crosstool-ng configuration file and build scripts
-COPY --chown=1000:1000 x86_64-gcc-8.5.0-glibc-2.28.config /home/ctng/
+# Copy crosstool-ng configuration files and build scripts
+COPY --chown=1000:1000 configs/ /home/ctng/configs/
 COPY --chown=1000:1000 build-toolchain.sh /home/ctng/
 RUN chmod +x /home/ctng/build-toolchain.sh
 

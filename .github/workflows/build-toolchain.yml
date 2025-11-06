@@ -98,9 +98,10 @@ jobs:
         **Branch/Tag:** ${{ github.ref_name }}
         
         ## 📦 Package Contents
-        - `rhel7-toolchain-*.tar.gz` - Complete GCC 8.5.0 + glibc 2.28 toolchain
+        - `rhel7-toolchain-*.tar.gz` - Complete GCC 8.5.0 + glibc 2.28 toolchain for x86_64
         - `patchelf-0.18.0-x86_64.tar.gz` - Required by VS Code Remote SSH
         - `install-toolchain.sh` - Automated installation script
+        - `uninstall-toolchain.sh` - Clean removal script
         
         ## 🚀 Installation
         ```bash
@@ -108,10 +109,15 @@ jobs:
         wget https://github.com/${{ github.repository }}/releases/latest/download/rhel7-toolchain-*.tar.gz
         wget https://github.com/${{ github.repository }}/releases/latest/download/patchelf-0.18.0-x86_64.tar.gz  
         wget https://github.com/${{ github.repository }}/releases/latest/download/install-toolchain.sh
+        wget https://github.com/${{ github.repository }}/releases/latest/download/uninstall-toolchain.sh
         
         # Install (completely offline)
         chmod +x install-toolchain.sh
         ./install-toolchain.sh
+        
+        # To uninstall later
+        chmod +x uninstall-toolchain.sh
+        ./uninstall-toolchain.sh
         ```
         
         ## ✅ Features
@@ -147,6 +153,7 @@ jobs:
           exported-toolchain/rhel7-toolchain-*.tar.gz
           exported-toolchain/patchelf-0.18.0-x86_64.tar.gz
           exported-toolchain/install-toolchain.sh
+          exported-toolchain/uninstall-toolchain.sh
         body_path: release-notes.md
         draft: false
         prerelease: false

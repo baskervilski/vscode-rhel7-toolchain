@@ -15,7 +15,9 @@ SYSROOT_DIR = $(OUTPUT_DIR)/$(TOOLCHAIN_PREFIX)/$(TOOLCHAIN_PREFIX)/sysroot
 PATCHELF_VERSION = 0.18.0
 PATCHELF_URL = https://github.com/NixOS/patchelf/releases/download/$(PATCHELF_VERSION)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz
 INSTALL_SCRIPT = install-toolchain.sh
+UNINSTALL_SCRIPT = uninstall-toolchain.sh
 BUILD_SCRIPT = build-toolchain.sh
+CONFIG_FILE ?= x86_64-gcc-8.5.0-glibc-2.28.config
 SSH_PORT = 2222
 TEST_USER = developer
 SYSROOT_INSTALL_PATH = /opt/rhel7-sysroot
@@ -27,8 +29,8 @@ help:
 	@echo "  build           - Build the container image using podman"
 	@echo "  docker-build    - Build the container image using docker (CI/CD)"
 	@echo "  run             - Start container with mounted output directory (interactive)"
-	@echo "  build-toolchain - Build toolchain directly to mounted output (automated)"
-	@echo "  docker-toolchain - Build toolchain using docker (CI/CD compatible)"
+	@echo "  build-toolchain - Build toolchain directly to mounted output (verbose mode)"
+	@echo "  docker-toolchain - Build toolchain using docker (filtered mode, CI/CD compatible)"
 	@echo "  package         - Package toolchain for distribution"
 	@echo "  check           - Check if toolchain exists in mounted output"
 	@echo "  verify          - Verify toolchain build completeness and functionality"
@@ -89,7 +91,8 @@ check:
 		echo ""; \
 		echo "Build options:"; \
 		echo "  Interactive: make run -> ./$(BUILD_SCRIPT)"; \
-		echo "  Automated:   make build-toolchain"; \
+		echo "  Verbose:     make build-toolchain (full output)"; \
+		echo "  Filtered:    make docker-toolchain (progress only)"; \
 	fi
 
 # Verify toolchain build completeness and functionality
@@ -158,10 +161,12 @@ build-toolchain:
 	@chmod 755 $(OUTPUT_DIR)
 	@echo "Building toolchain using $(BUILD_SCRIPT) script..."
 	@echo "This will take 30-60 minutes..."
+	@echo "Using verbose mode for direct build..."
+	@echo "Configuration: $(CONFIG_FILE)"
 	podman run --rm --name $(CONTAINER_NAME) \
 		-v $(OUTPUT_DIR):/home/ctng/output:Z \
 		--userns=keep-id \
-		$(IMAGE_NAME) ./$(BUILD_SCRIPT)
+		$(IMAGE_NAME) ./$(BUILD_SCRIPT) true "$(CONFIG_FILE)"
 	@echo "🔧 Ensuring proper file permissions..."
 	@find $(OUTPUT_DIR) -type d -exec chmod 755 {} \; 2>/dev/null || true
 	@find $(OUTPUT_DIR) -type f ! -path "*/bin/*" ! -path "*/libexec/*" -exec chmod 644 {} \; 2>/dev/null || true
@@ -182,10 +187,11 @@ docker-toolchain:
 		--user root \
 		$(IMAGE_NAME) bash -c "chown -R ctng:ctng /home/ctng/output"
 	@echo "🚀 Starting filtered build process..."
+	@echo "Configuration: $(CONFIG_FILE)"
 	docker run --rm --name $(CONTAINER_NAME)-build \
 		-v $(OUTPUT_DIR):/home/ctng/output \
 		--user ctng \
-		$(IMAGE_NAME) ./$(BUILD_SCRIPT)
+		$(IMAGE_NAME) ./$(BUILD_SCRIPT) false "$(CONFIG_FILE)"
 	@echo "🔧 Fixing final file permissions after build..."
 	@docker run --rm --name $(CONTAINER_NAME)-perms \
 		-v $(OUTPUT_DIR):/home/ctng/output \
@@ -210,7 +216,7 @@ package:
 	@find $(OUTPUT_DIR) -type f ! -path "*/bin/*" ! -path "*/libexec/*" -exec chmod 644 {} + 2>/dev/null || true
 	@find $(OUTPUT_DIR) -type f \( -path "*/bin/*" -o -path "*/libexec/*" \) -exec chmod 755 {} + 2>/dev/null || true
 	@echo "Creating portable archive..."
-	@tar -czf $(TOOLCHAIN_ARCHIVE) -C $(OUTPUT_DIR) .
+	@tar -czfv $(TOOLCHAIN_ARCHIVE) -C $(OUTPUT_DIR) .
 	@echo "Preparing patchelf for offline installation..."
 	@if [ ! -f "$(EXPORT_DIR)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz" ]; then \
 		echo "Downloading patchelf..."; \
@@ -218,15 +224,18 @@ package:
 	else \
 		echo "Using existing patchelf archive"; \
 	fi
-	@echo "Copying installation script..."
+	@echo "Copying installation and uninstall scripts..."
 	@cp $(INSTALL_SCRIPT) $(EXPORT_DIR)/
+	@cp $(UNINSTALL_SCRIPT) $(EXPORT_DIR)/
 	@chmod +x $(EXPORT_DIR)/$(INSTALL_SCRIPT)
+	@chmod +x $(EXPORT_DIR)/$(UNINSTALL_SCRIPT)
 	@mv $(TOOLCHAIN_ARCHIVE) $(EXPORT_DIR)/
 	@echo ""
 	@echo "✅ Toolchain packaged successfully!"
 	@echo "📦 Archive: $(EXPORT_DIR)/$(TOOLCHAIN_ARCHIVE)"
 	@echo "📋 Installer: $(EXPORT_DIR)/$(INSTALL_SCRIPT)"
-	@echo "🔧 patchelf: $(EXPORT_DIR)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz"
+	@echo "�️  Uninstaller: $(EXPORT_DIR)/$(UNINSTALL_SCRIPT)"
+	@echo "�🔧 patchelf: $(EXPORT_DIR)/patchelf-$(PATCHELF_VERSION)-x86_64.tar.gz"
 	@echo ""
 	@echo "Transfer to RHEL 7 server:"
 	@echo "  scp $(EXPORT_DIR)/* user@rhel7-server:"
